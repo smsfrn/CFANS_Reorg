@@ -7,7 +7,7 @@ output:
   df_print: kable
 theme: cosmo
 toc: true
-toc_depth: 4
+toc_depth: 2
 toc_float: true
 ---
 
@@ -89,7 +89,7 @@ enrollment %>%
 
 nrow(enrollment) # number of courses CFANS sudents enrolled in
 nrow(filter(enrollment, n_students == 1)) # number of courses with just 1 CFANS student
-nrow(filter(enrollment, n_students == 2)) # number of courses with just 1 CFANS student
+nrow(filter(enrollment, n_students == 2)) # number of courses with just 2 CFANS students
 ```
 
 Pareto chart shows similar thing. Begins to level off at courses with ~5 students (about 1/3rd of the way across).
@@ -130,7 +130,7 @@ length(students_to_drop)
 ```
 
 ### Generate data matrix
-```{r}
+```{r, warning=FALSE, message=FALSE}
 # Remove courses and students not meeting minimums
 df <- dat %>%
   filter(!(course %in% courses_to_drop)) %>%
@@ -211,7 +211,7 @@ plot(dissim, cex = .6)
 
 ### Cluster analysis
 
-This needs more work. Not evalauting yet...
+This needs more work. Not evaluating yet...
 ```{r, eval = FALSE}
 clusters <- hclust(dist_mat_course, method = "complete")
 plot(clusters, cex = .2, hang = -.1)
