@@ -43,14 +43,24 @@ Load and tidy AY 22-23 data (students and courses they took).
 
 ```{r load data}
 # load data
-dat <- read.csv(here("Data", "Students Data Set.csv")) %>%
-  rename("course" = "Course1",
-         "student" = "Name",
-         "major" = "Major1")
+# dat <- read.csv(here("Data", "Students Data Set.csv")) %>%
+#   rename("course" = "Course1",
+#          "student" = "Name",
+#          "major" = "Major1")
 
 # consolidate courses with modifiers--e.g., make "WRIT 3562W" and "WRIT 3562V" both just "WRIT 3562". This reduces the number of courses by 24 (from 1944 courses to 1920 courses)
-dat <- dat %>%
-  mutate(course = sub("[A-Za-z]+$", "", course))
+# dat <- dat %>%
+#   mutate(course = sub("[A-Za-z]+$", "", course))
+
+# # anonymize students
+# dat <- dat %>%
+#    mutate(student = as.integer(as.factor(student)))
+# 
+# write.csv(dat, here("Data", "Students Data Set Anon.csv"))
+
+dat <- read.csv(here("Data", "Students Data Set Anon.csv")) %>%
+  select(-X) %>%
+  mutate(student = as.factor(student))
 ```
 
 ## Enrollment distribution
