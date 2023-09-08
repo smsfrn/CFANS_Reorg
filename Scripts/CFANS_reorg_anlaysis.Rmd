@@ -4,11 +4,11 @@ author: "Sam Safran & Rob Blair"
 date: "2023-09-08"
 output:
   html_document:
-  df_print: kable
-theme: cosmo
-toc: true
-toc_depth: 2
-toc_float: true
+    df_print: kable
+    theme: cosmo
+    toc: true
+    toc_depth: 4
+    toc_float: true
 ---
 
 ```{=html}
@@ -174,8 +174,6 @@ matrix_course <- df %>%
 matrix_course[matrix_course>1] <- 1
 ```
 
-## Ordination
-
 ### Distance matrix
 
 ```{r}
@@ -230,5 +228,37 @@ result_df <- data.frame(CourseID = colnames(dist_mat_course), Cluster = course_c
 print(result_df)
 ```
 
+### NMDS
+
+This needs more work. Not evaluating yet...
+```{r, eval = FALSE}
+# Determine best dimensionailty by comparing stress levels with scree plot
+screeplot <- dimcheckMDS(matrix,
+                         distance = "jaccard", # distance measure used for metaMDS analysis
+                         trymax = 5,
+                         k = 3) # maximum number of dimensions, default is 6. could in theory test up to max number of species.
+
+screeplot
+
+# stress from just 2 dimensions should be <0.2. if not use a higher number of dimensions.
+set.seed(1)
+nmds3 <- metaMDS(comm = matrix, # Define the data to use 
+                 distance = "bray", # Specify distance
+                 k = 3,
+                 trace = FALSE) # allow default for community data
+
+nmds3
+
+### Evaluate NDMS
+
+nmds3$ndim                        # how many nMDS axes were created?
+nmds3$converged                 # did it find a convergent solution?
+nmds3$points                 # scores for each location (as samples)
+nmds3$species          # scores for each animal order (as variables)
+
+#A Shepard diagram is a scatterplot of distances between points in an nMDS final configuration (observed dissimilarity) against the original dissimilarities (ordination distance). For a nMDS, the line of best fit produced is monotonic, in that it can only step up or remain constant. The points in a good Shepard diagram should be a clean curve or straight line. Large scatter around the line suggests that original dissimilarities are not well preserved in the reduced number of dimensions. If your plot resembles a step-wise or inverse L-shaped function, it would be wise to not interpret this data and instead try to solve for a degenerate solution (not covered in this course). However, please note if you have a small data set (not many observations) your data may look step-wise in a Shepard diagram. Note, you will need to produce a new Shepard diagram when altering the number of dimensions being plotted.Confusingly, the Shepard diagram is called stressplot in R!
+
+stressplot(nmds3)
+```
 
 
