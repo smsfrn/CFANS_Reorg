@@ -1,0 +1,224 @@
+---
+title: "CFANS reorg analysis"
+author: "Sam Safran & Rob Blair"
+date: "2023-09-08"
+output:
+  html_document:
+  df_print: kable
+theme: cosmo
+toc: true
+toc_depth: 4
+toc_float: true
+---
+
+```{=html}
+<style>
+  
+  pre {
+    font-size: 12px;
+  }
+</style>
+```
+
+------------------------------------------------------
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data prep
+
+Load required packages.
+
+```{r load packages, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(vegan)
+library(here)
+library(goeveg) # needed for dimcheckMDS to create scree plot.
+require(ggQC) # for pareto chart
+library(DT)
+```
+
+Load and tidy AY 22-23 data (students and courses they took).
+
+```{r load data}
+# load data
+dat <- read.csv(here("Data", "Students Data Set.csv")) %>%
+  rename("course" = "Course1",
+         "student" = "Name",
+         "major" = "Major1")
+
+# consolidate courses with modifiers--e.g., make "WRIT 3562W" and "WRIT 3562V" both just "WRIT 3562". This reduces the number of courses by 24 (from 1944 courses to 1920 courses)
+dat <- dat %>%
+  mutate(course = sub("[A-Za-z]+$", "", course))
+```
+
+## Enrollment distribution
+
+Explore enrollment size data (will drop courses with only a few students from ordination). First generate seachable table with courses sorted by enrollment size.
+```{r enrollment}
+# number of students in each course
+enrollment <- dat %>%
+  group_by(course) %>%
+  summarize(n_students = n()) %>%
+  arrange(desc(n_students))
+
+# print table
+datatable(enrollment, style = 'bootstrap', class = "table table-condensed", rownames = FALSE, filter = "top")
+```
+
+Generate histogram of courses by their enrollment size. Shows that about half of the 1920 courses taken by CFANS students are taken by just 1-2 students.
+```{r}
+# plot histogram counting number of courses by enrollment size
+enrollment %>%
+  ggplot() +
+  geom_histogram(mapping = aes(x = n_students), binwidth = 1) +
+  labs(title = "Number of courses by enrollment size",
+       x = "CFANS enrollment",
+       y = "Number of courses")
+
+nrow(enrollment) # number of courses CFANS sudents enrolled in
+nrow(filter(enrollment, n_students == 1)) # number of courses with just 1 CFANS student
+nrow(filter(enrollment, n_students == 2)) # number of courses with just 1 CFANS student
+```
+
+Pareto chart shows similar thing. Begins to level off at courses with ~5 students (about 1/3rd of the way across).
+```{r}
+# pareto chart--starts to level off at courses with ~5 students  
+enrollment %>%
+  ggplot(aes(x = course, y = n_students)) +
+  stat_pareto(point.color = "red",
+              point.size = 1,
+              line.color = "black",
+              bars.fill = c("blue", "orange"),)
+```
+
+## Ordination
+
+### Filter data
+
+Only keeping courses with a minimum enrollment. Also dropping students that took very few courses. These thresholds set in code.
+
+```{r}
+min_enrollment_to_keep_course <- 5
+min_classes_to_keep_student <- 4
+
+courses_to_drop <- enrollment %>% 
+  filter(n_students < min_enrollment_to_keep_course) %>%
+  pull(course)
+
+# how many courses dropped?
+length(courses_to_drop)
+
+students_to_drop <- dat %>% group_by(student) %>%
+  summarize(n_courses = n()) %>%
+  filter(n_courses < min_classes_to_keep_student) %>%
+  pull(student)
+
+# how many students dropped?
+length(students_to_drop)
+```
+
+### Generate data matrix
+```{r}
+# Remove courses and students not meeting minimums
+df <- dat %>%
+  filter(!(course %in% courses_to_drop)) %>%
+  filter(!(student %in% students_to_drop))
+
+# generate student-course binary matrix
+matrix <- df %>%
+  pivot_wider(student, 
+              names_from = course, 
+              values_from = course, 
+              values_fn = list(course = length), 
+              values_fill = list(course = 0)) %>%
+  column_to_rownames(var = "student") 
+
+# double majors have their courses duplicated, yielding counts >1 in the matrix. fix that.
+matrix[matrix>1] <- 1
+
+# pull student data for this matrix
+student_majors <- dat %>%
+  group_by(student) %>%
+  summarize(major_count = length(unique(major)),
+            majors_all = paste(unique(major), collapse = ", "),
+            major = sample(unique(major), 1)) # for double-majors, randomly pick a single major to assign for anlaysis 
+
+student_dat <- row.names(matrix) %>%
+  as.data.frame() %>%
+  rename("student" = ".") %>%
+  left_join(student_majors)
+
+
+# generate student-course binary matrix
+matrix_course <- df %>%
+  pivot_wider(course, 
+              names_from = student, 
+              values_from = student, 
+              values_fn = list(student = length), 
+              values_fill = list(student = 0)) %>%
+  column_to_rownames(var = "course") 
+
+# double majors have their courses duplicated, yielding counts >1 in the matrix. fix that.
+matrix_course[matrix_course>1] <- 1
+```
+
+## Ordination
+
+### Distance matrix
+
+```{r}
+# Generate distance matrix
+dist_mat <- vegdist(matrix, "jaccard", binary = TRUE)
+dist_mat_course <- vegdist(matrix_course, "jaccard", binary = TRUE)
+```
+
+### CCA
+```{r}
+mod <- cca(matrix ~ major, student_dat)
+mod
+
+# raw plot- black circles are students, red plusses are classes, blue x's are majors
+plot(mod)
+
+# plot ellipses for majors (standard deviation of points)
+plot(mod, type = "n")
+pl <- with(student_dat, ordiellipse(mod, major, kind = "sd", scaling = "symmetric", col = 1:13, draw="polygon", label =TRUE, cex = .4))
+```
+
+### Mean dissimilarity matrix
+```{r}
+# Generate mean dissimilarity matrix, based on major
+dissim <- meandist(dist_mat, grouping = student_dat$major) 
+
+#"Function meandist calculates a matrix of mean within-cluster dissimilarities (diagonal) and between-cluster dissimilarities (off-diagonal elements), and an attribute n of grouping counts. Function summary finds the within-class, between-class and overall means of these dissimilarities, and the MRPP statistics with all weight.type options and the Classification Strength, CS (Van Sickle and Hughes, 2000)."
+summary(dissim) # I don't actually know how to interpret this...
+
+# Plot resulting dendrogram
+plot(dissim, cex = .6)
+```
+
+### Cluster analysis
+
+This needs more work. Not evalauting yet...
+```{r, eval = FALSE}
+clusters <- hclust(dist_mat_course, method = "complete")
+plot(clusters, cex = .2, hang = -.1)
+    rect.hclust(clusters, 2, border="red") 
+    rect.hclust(clusters, 4, border="blue")
+    rect.hclust(clusters, 5, border="darkgreen")
+
+# Cut the tree into 3 clusters
+course_clusters <- cutree(clusters, k = 3)
+
+# Cut the tree into 4 clusters
+course_clusters <- cutree(clusters, k = 4)
+
+# View the Results
+result_df <- data.frame(CourseID = colnames(dist_mat_course), Cluster = course_clusters)
+print(result_df)
+```
+
+
+
